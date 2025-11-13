@@ -70,16 +70,28 @@ export default function VideoCall({ roomId, userName }: VideoCallProps) {
     newSocket.on('answer', async (data: { answer: RTCSessionDescriptionInit }) => {
       console.log('Received answer')
       if (peerConnectionRef.current) {
-        await peerConnectionRef.current.setRemoteDescription(
-          new RTCSessionDescription(data.answer)
-        )
+        try {
+          await peerConnectionRef.current.setRemoteDescription(
+            new RTCSessionDescription(data.answer)
+          )
+          console.log('Remote description set from answer')
+        } catch (error) {
+          console.error('Error setting remote description from answer:', error)
+        }
+      } else {
+        console.warn('No peer connection when receiving answer')
       }
     })
 
     newSocket.on('ice-candidate', async (data: { candidate: RTCIceCandidateInit }) => {
       console.log('Received ICE candidate')
-      if (peerConnectionRef.current) {
-        await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(data.candidate))
+      if (peerConnectionRef.current && data.candidate) {
+        try {
+          await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(data.candidate))
+          console.log('ICE candidate added successfully')
+        } catch (error) {
+          console.error('Error adding ICE candidate:', error)
+        }
       }
     })
 
@@ -259,6 +271,12 @@ export default function VideoCall({ roomId, userName }: VideoCallProps) {
   }
 
   const createPeerConnection = (userId: string) => {
+    // Закрываем предыдущее соединение если есть
+    if (peerConnectionRef.current) {
+      console.log('Closing existing peer connection')
+      peerConnectionRef.current.close()
+    }
+
     const pc = new RTCPeerConnection(configuration)
 
     // Добавляем локальные треки (используем текущий активный поток)
@@ -267,27 +285,56 @@ export default function VideoCall({ roomId, userName }: VideoCallProps) {
       : localStream
       
     if (activeStream) {
+      console.log('Adding local tracks to peer connection', {
+        videoTracks: activeStream.getVideoTracks().length,
+        audioTracks: activeStream.getAudioTracks().length,
+      })
       activeStream.getTracks().forEach((track) => {
+        console.log('Adding track:', track.kind, track.enabled)
         pc.addTrack(track, activeStream)
       })
+    } else {
+      console.warn('No local stream available when creating peer connection')
     }
 
     // Обработка удаленного потока
     pc.ontrack = (event) => {
-      console.log('Received remote stream')
-      setRemoteStream(event.streams[0])
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = event.streams[0]
+      console.log('Received remote stream', event.streams)
+      if (event.streams && event.streams.length > 0) {
+        setRemoteStream(event.streams[0])
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = event.streams[0]
+        }
+      }
+    }
+
+    // Обработка состояния соединения
+    pc.onconnectionstatechange = () => {
+      console.log('Peer connection state:', pc.connectionState)
+      if (pc.connectionState === 'failed') {
+        console.error('Peer connection failed')
+        setError('Не удалось установить соединение. Попробуйте переподключиться.')
       }
     }
 
     // Обработка ICE кандидатов
     pc.onicecandidate = (event) => {
       if (event.candidate && socketRef.current) {
+        console.log('Sending ICE candidate')
         socketRef.current.emit('ice-candidate', {
           roomId,
           candidate: event.candidate,
         })
+      } else if (!event.candidate) {
+        console.log('All ICE candidates have been sent')
+      }
+    }
+
+    // Обработка ошибок ICE
+    pc.oniceconnectionstatechange = () => {
+      console.log('ICE connection state:', pc.iceConnectionState)
+      if (pc.iceConnectionState === 'failed') {
+        console.error('ICE connection failed')
       }
     }
 
@@ -296,12 +343,19 @@ export default function VideoCall({ roomId, userName }: VideoCallProps) {
   }
 
   const createOffer = async (userId: string) => {
+    console.log('Creating offer for user:', userId)
     const pc = createPeerConnection(userId)
     try {
-      const offer = await pc.createOffer()
+      const offer = await pc.createOffer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: true,
+      })
+      console.log('Offer created:', offer.type)
       await pc.setLocalDescription(offer)
+      console.log('Local description set')
 
       if (socketRef.current) {
+        console.log('Sending offer to:', userId)
         socketRef.current.emit('offer', {
           roomId,
           offer,
@@ -310,17 +364,26 @@ export default function VideoCall({ roomId, userName }: VideoCallProps) {
       }
     } catch (error) {
       console.error('Error creating offer:', error)
+      setError('Ошибка при создании предложения соединения')
     }
   }
 
   const handleOffer = async (offer: RTCSessionDescriptionInit, from: string) => {
+    console.log('Handling offer from:', from)
     const pc = createPeerConnection(from)
     try {
       await pc.setRemoteDescription(new RTCSessionDescription(offer))
-      const answer = await pc.createAnswer()
+      console.log('Remote description set')
+      const answer = await pc.createAnswer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: true,
+      })
+      console.log('Answer created:', answer.type)
       await pc.setLocalDescription(answer)
+      console.log('Local description set for answer')
 
       if (socketRef.current) {
+        console.log('Sending answer to:', from)
         socketRef.current.emit('answer', {
           roomId,
           answer,
@@ -329,6 +392,7 @@ export default function VideoCall({ roomId, userName }: VideoCallProps) {
       }
     } catch (error) {
       console.error('Error handling offer:', error)
+      setError('Ошибка при обработке предложения соединения')
     }
   }
 
