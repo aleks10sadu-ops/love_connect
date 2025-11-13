@@ -1,0 +1,12 @@
+{
+  "name": "love-connect-socket-server",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node socket-server.js"
+  },
+  "dependencies": {
+    "socket.io": "^4.6.1"
+  }
+}
+
