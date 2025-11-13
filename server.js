@@ -104,6 +104,7 @@ app.prepare().then(() => {
     })
 
     socket.on('offer', ({ roomId, offer, to }) => {
+      console.log(`Offer from ${socket.id} to ${to} in room ${roomId}`)
       socket.to(to).emit('offer', {
         offer,
         from: socket.id,
@@ -111,6 +112,7 @@ app.prepare().then(() => {
     })
 
     socket.on('answer', ({ roomId, answer, to }) => {
+      console.log(`Answer from ${socket.id} to ${to} in room ${roomId}`)
       socket.to(to).emit('answer', {
         answer,
       })
@@ -121,11 +123,14 @@ app.prepare().then(() => {
       if (room) {
         room.forEach((user) => {
           if (user.socketId !== socket.id) {
+            console.log(`ICE candidate from ${socket.id} to ${user.socketId} in room ${roomId}`)
             socket.to(user.socketId).emit('ice-candidate', {
               candidate,
             })
           }
         })
+      } else {
+        console.warn(`Room ${roomId} not found for ICE candidate from ${socket.id}`)
       }
     })
 
