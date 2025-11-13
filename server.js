@@ -7,10 +7,19 @@ const dev = process.env.NODE_ENV !== 'production'
 const hostname = process.env.HOSTNAME || (dev ? 'localhost' : '0.0.0.0')
 const port = parseInt(process.env.PORT || '3000', 10)
 
-const app = next({ dev, hostname, port })
+console.log(`Starting server in ${dev ? 'development' : 'production'} mode`)
+console.log(`Port: ${port}, Hostname: ${hostname}`)
+
+const app = next({ 
+  dev,
+  hostname,
+  port,
+})
+
 const handle = app.getRequestHandler()
 
 app.prepare().then(() => {
+  console.log('Next.js app prepared successfully')
   const httpServer = createServer(async (req, res) => {
     try {
       await handle(req, res)
@@ -22,13 +31,49 @@ app.prepare().then(() => {
   })
 
   // CORS настройки - разрешаем подключения с Vercel и локального хоста
-  const allowedOrigins = process.env.FRONTEND_URL
-    ? [process.env.FRONTEND_URL, 'http://localhost:3000']
-    : ['*']
+  let allowedOrigins = ['*'] // По умолчанию разрешаем все
+  
+  if (process.env.FRONTEND_URL) {
+    // Поддерживаем несколько URL через запятую
+    const frontendUrls = process.env.FRONTEND_URL.split(',').map(url => url.trim())
+    allowedOrigins = [
+      ...frontendUrls,
+      'http://localhost:3000',
+      'http://localhost:3001',
+      // Добавляем поддержку всех Vercel поддоменов
+      /^https:\/\/.*\.vercel\.app$/,
+    ]
+  }
+
+  console.log('Allowed CORS origins:', allowedOrigins)
 
   const io = new Server(httpServer, {
     cors: {
-      origin: allowedOrigins,
+      origin: (origin, callback) => {
+        // Если origin не указан (например, для same-origin запросов), разрешаем
+        if (!origin) {
+          return callback(null, true)
+        }
+        
+        // Проверяем точное совпадение
+        if (allowedOrigins.includes(origin)) {
+          return callback(null, true)
+        }
+        
+        // Проверяем регулярные выражения
+        for (const allowedOrigin of allowedOrigins) {
+          if (allowedOrigin instanceof RegExp && allowedOrigin.test(origin)) {
+            return callback(null, true)
+          }
+        }
+        
+        // Если '*' в списке, разрешаем все
+        if (allowedOrigins.includes('*')) {
+          return callback(null, true)
+        }
+        
+        callback(new Error('Not allowed by CORS'))
+      },
       methods: ['GET', 'POST'],
       credentials: true,
     },
@@ -129,10 +174,14 @@ app.prepare().then(() => {
     })
     .listen(port, hostname === '0.0.0.0' ? undefined : hostname, () => {
       const displayHost = hostname === '0.0.0.0' ? 'localhost' : hostname
-      console.log(`> Ready on http://${displayHost}:${port}`)
+      console.log(`> Server ready on http://${displayHost}:${port}`)
+      console.log(`> Socket.io server is running`)
       if (hostname === '0.0.0.0') {
         console.log(`> Also available on http://localhost:${port}`)
       }
     })
+}).catch((err) => {
+  console.error('Failed to start server:', err)
+  process.exit(1)
 })
 
