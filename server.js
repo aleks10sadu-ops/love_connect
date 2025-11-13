@@ -3,8 +3,9 @@ const { Server } = require('socket.io')
 const next = require('next')
 
 const dev = process.env.NODE_ENV !== 'production'
-// Для локальной разработки используем localhost, для продакшена - 0.0.0.0
-const hostname = process.env.HOSTNAME || (dev ? 'localhost' : '0.0.0.0')
+// Для продакшена всегда используем 0.0.0.0 чтобы принимать соединения извне
+// Railway и другие платформы устанавливают HOSTNAME на внутренний адрес, игнорируем его
+const hostname = dev ? 'localhost' : '0.0.0.0'
 const port = parseInt(process.env.PORT || '3000', 10)
 
 console.log(`Starting server in ${dev ? 'development' : 'production'} mode`)
