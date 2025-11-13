@@ -31,18 +31,17 @@ app.prepare().then(() => {
     }
   })
 
-  // CORS настройки - разрешаем подключения с Vercel и локального хоста
+  // CORS настройки - разрешаем подключения с того же домена и локального хоста
+  // Если всё на Railway, то разрешаем все (same-origin)
   let allowedOrigins = ['*'] // По умолчанию разрешаем все
   
   if (process.env.FRONTEND_URL) {
-    // Поддерживаем несколько URL через запятую
+    // Поддерживаем несколько URL через запятую (для случая если фронтенд отдельно)
     const frontendUrls = process.env.FRONTEND_URL.split(',').map(url => url.trim())
     allowedOrigins = [
       ...frontendUrls,
       'http://localhost:3000',
       'http://localhost:3001',
-      // Добавляем поддержку всех Vercel поддоменов
-      /^https:\/\/.*\.vercel\.app$/,
     ]
   }
 
